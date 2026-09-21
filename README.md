@@ -1,87 +1,58 @@
-# DExPhish — Explainable AI for Phishing Webpage Detection
+# DExPhish: explainable phishing webpage detection
 
-> XLM-RoBERTa embeddings + statistical HTML features + SHAP explainability · Submitted to ICIT 2025
+A phishing detector that reads the page itself, not just the URL, and shows which features drove each verdict.
 
----
+Most phishing filters score the URL. That is easy to dodge with a fresh domain. DExPhish fetches the page HTML and combines two views of it:
 
-## Overview
+- **Structure:** tag counts (links, forms, inputs, scripts, iframes, images, meta), Shannon entropy of the HTML, maximum DOM depth, and raw and visible text length.
+- **Meaning:** XLM-RoBERTa embeddings (768 dimensions, mean pooled) of the visible text and of the tag sequence.
 
-DExPhish is a phishing detection system that analyzes **actual webpage HTML** — not just URLs — to learn the structural, textual, and visual patterns used by phishing pages. Every prediction comes with **SHAP-based explanations** showing which features triggered the detection, making it suitable for security analyst workflows where interpretability matters.
-
-A companion system, **MExPhish**, extends this to multilingual phishing detection using cross-lingual embeddings.
-
----
-
-## Why HTML, Not Just URLs
-
-URL-based detection is increasingly unreliable. HTML-based detection captures intent through content:
-- **Structural**: Hidden form fields, off-domain action targets, iframe injection
-- **Textual**: Brand impersonation, urgency language, login prompts
-- **Visual**: CSS mimicry of legitimate pages, favicon mismatches
-
----
-
-## Architecture
+The two are concatenated and passed to a classifier tuned with a randomised search (XGBoost, with a random forest fallback). SHAP then explains each prediction in terms of the structural features.
 
 ```
-Raw Webpage HTML
-        │
-        ├──► HTML Parser ──► Statistical Features (tag ratios, form analysis,
-        │                    external link density, script injection indicators)
-        │
-        └──► XLM-RoBERTa ──► Contextual Embeddings (768-d)
-                     │
-             ┌───────▼────────┐
-             │  Fusion Layer  │ ← Concatenate statistical + semantic features
-             └───────┬────────┘
-                     │
-              Binary Classifier + SHAP Explainer
+webpage HTML
+   |-- HTML parser ----> structural features (tag counts, entropy, DOM depth, text length)
+   |-- XLM-RoBERTa ----> text and tag sequence embeddings
+   `-- concatenate ----> tuned classifier ----> phishing probability + SHAP explanation
 ```
-
----
 
 ## Results
 
-| Model | Accuracy | F1 | TPR @ 1% FPR |
-|---|---|---|---|
-| DExPhish (Full) | **97.3%** | **0.971** | **89.2%** |
-| HTML Features Only | 93.1% | 0.928 | 76.4% |
-| XLM-RoBERTa Only | 95.8% | 0.956 | 83.1% |
-| URL Baseline | 88.4% | 0.879 | 61.7% |
+Measured in `notebook.ipynb` on the validation split of the Kaggle dataset "Phishing Website HTML Classification".
 
-Fusion of structural + semantic features outperforms either alone.
+| Metric | Value |
+|---|---|
+| Accuracy | 0.967 |
+| Precision | 0.965 |
+| Recall | 0.953 |
+| F1 | 0.959 |
+| ROC AUC | 0.995 |
 
----
+These are the numbers the notebook prints. There is no ablation study in this repository, so no comparison against URL only or text only baselines is claimed here.
 
-## SHAP Explainability
+## Explanations
 
+The notebook fetches a live URL, scores it, and plots the SHAP contribution of each structural feature. One real example from the notebook:
+
+![SHAP feature contributions for one live page](images/shap-example.png)
+
+A decision threshold of 0.20 is used at inference, chosen to favour recall: missing a phishing page costs more than a false alarm.
+
+## Run it
+
+Open `notebook.ipynb` on Kaggle with the dataset attached, or locally with a GPU for the embedding step.
+
+```bash
+pip install transformers torch scikit-learn xgboost shap beautifulsoup4 pandas tqdm
 ```
-Base rate: 0.12
-+ hidden_form_fields:    +0.31
-+ off_domain_action:     +0.28
-+ brand_keyword_density: +0.19
-+ external_script_count: +0.08
-- https_present:         -0.04
-─────────────────────────────
-Prediction: 0.94 (Phishing)
-```
 
----
+## Stack
 
-## Technical Stack
-
-- **Embeddings**: XLM-RoBERTa (Hugging Face transformers)
-- **Explainability**: SHAP (TreeExplainer + DeepExplainer)
-- **HTML Parsing**: BeautifulSoup4
-- **Classification**: Gradient Boosting on fused feature vector
-
----
+Python, Hugging Face Transformers (XLM-RoBERTa), scikit-learn, XGBoost, SHAP, BeautifulSoup.
 
 ## Research
 
-Submitted to **ICIT 2025**. Addresses the gap in XAI-driven phishing detection for security operations.
-
----
+Submitted to ICIT 2025.
 
 ## License
 
